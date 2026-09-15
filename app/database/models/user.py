@@ -1,0 +1,35 @@
+"""User model."""
+
+from datetime import datetime
+
+from sqlalchemy import BigInteger, Boolean, DateTime, String, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.database.database import Base
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
+    username: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    first_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    language: Mapped[str] = mapped_column(String(10), default="uz")
+    is_blocked: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    last_active_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    favorites: Mapped[list["Favorite"]] = relationship(  # noqa: F821
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    ratings: Mapped[list["Rating"]] = relationship(  # noqa: F821
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    requests: Mapped[list["MovieRequest"]] = relationship(  # noqa: F821
+        back_populates="user", cascade="all, delete-orphan"
+    )

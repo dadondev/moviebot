@@ -102,6 +102,60 @@ movie-bot/
 
 ---
 
+## ☁️ Deploy to Railway (webhook mode)
+
+Railway runs the bot as a **web service** using a webhook instead of long polling.
+
+### 1. Create a Railway project
+
+- Push this repo to GitHub.
+- In Railway, click **New Project → Deploy from GitHub repo** and select it.
+
+### 2. Add services
+
+Railway will detect the Python app. Add the required backing services:
+
+- **PostgreSQL** — Railway → New → Database → PostgreSQL
+- **Redis** — Railway → New → Database → Redis
+
+### 3. Set environment variables
+
+In the service's **Variables** tab, add:
+
+```
+BOT_TOKEN=<your token>
+ADMIN_IDS=<your telegram ids>
+STORAGE_CHANNEL_ID=<your private channel id>
+DATABASE_URL=<railway postgres internal url>
+REDIS_URL=<railway redis internal url>
+USE_WEBHOOK=true
+WEBHOOK_URL=https://<your-app>.up.railway.app/webhook/bot
+WEBHOOK_SECRET=<a random secret string>
+ENVIRONMENT=production
+```
+
+> `WEBHOOK_URL` must match your app's public domain. Railway provides it as
+> `${{ RAILWAY_PUBLIC_DOMAIN }}` — you can set
+> `WEBHOOK_URL=https://${{ RAILWAY_PUBLIC_DOMAIN }}/webhook/bot`.
+
+### 4. Deploy
+
+Railway builds with Nixpacks (see `railway.json` / `nixpacks.toml`). On start it runs:
+
+```bash
+alembic upgrade head && python -m app.main
+```
+
+Migrations run automatically, then the webhook server starts on port `8000`
+and registers itself with Telegram.
+
+### 5. Verify
+
+- Health check: `https://<your-app>.up.railway.app/health` → `{"status": "ok"}`
+- Open `@yourbot` in Telegram and send `/start`.
+
+---
+
 ## 🧪 Running Tests
 
 ```bash

@@ -1,0 +1,10 @@
+# Railway Nixpacks build configuration
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "alembic upgrade head && python -m app.main"
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
