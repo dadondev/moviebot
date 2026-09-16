@@ -4,6 +4,7 @@ import logging
 import re
 
 from aiogram import F, Router
+from aiogram.filters import StateFilter
 from aiogram.types import CallbackQuery, InputMediaPhoto, Message
 
 from app.bot.keyboards.movie import (
@@ -108,7 +109,7 @@ async def _show_movie(
             await message.answer(text, reply_markup=kb)
 
 
-@router.message(F.text.regexp(CODE_PATTERN))
+@router.message(StateFilter(None), F.text.regexp(CODE_PATTERN))
 async def on_movie_code(message: Message) -> None:
     code = int(message.text)
     await _handle_movie_code(message, code)

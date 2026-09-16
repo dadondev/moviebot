@@ -19,8 +19,9 @@ class MovieRequest(Base):
     __tablename__ = "movie_requests"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # user_id stores the Telegram user ID (BigInteger) to match handler usage.
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), index=True
+        BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), index=True
     )
     movie_title: Mapped[str] = mapped_column(String(255))
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)

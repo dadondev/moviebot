@@ -33,6 +33,16 @@ async def main() -> None:
         )
         print("movie_files.episode_number:", r2.scalar())
 
+        # Check user_id column types.
+        for table in ("favorites", "ratings", "movie_requests"):
+            r3 = await conn.execute(
+                text(
+                    "SELECT data_type FROM information_schema.columns "
+                    f"WHERE table_name='{table}' AND column_name='user_id'"
+                )
+            )
+            print(f"{table}.user_id type:", r3.scalar())
+
     print("\n=== Redis ping ===")
     try:
         pong = await redis_client.ping()

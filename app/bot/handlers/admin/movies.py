@@ -54,11 +54,15 @@ async def _ensure_default_genres(session) -> None:
         slug = name.lower().replace(" ", "-")
         if slug not in existing:
             await repo.create(name, slug)
+    await session.commit()
 
 
 # --- Entry: admin clicks "➕ Kino qo‘shish" ---
 @router.callback_query(F.data == "admin_add_movie")
 async def admin_add_movie(callback: CallbackQuery, state: FSMContext) -> None:
+    # Clear any previous upload state so we start fresh.
+    await state.clear()
+    await state.set_state(MovieUploadStates.waiting_for_file)
     await callback.message.edit_text(
         "🎬 Kinoni yuboring (video yoki hujjat).\n\n"
         "Masalan: Avatar.mp4\n\n"
@@ -68,9 +72,10 @@ async def admin_add_movie(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 # --- Detect movie upload (video/document) ---
-@router.message(F.video | F.document)
+# Only fires when the admin is in the movie-upload flow (waiting_for_file),
+# so it never hijacks the episode-add flow or normal chats.
+@router.message(MovieUploadStates.waiting_for_file, F.video | F.document)
 async def receive_movie_file(message: Message, state: FSMContext) -> None:
-    # Only admins reach here (router filter). Store file info temporarily.
     file_id = None
     file_unique_id = None
     if message.video:
@@ -93,9 +98,84 @@ async def receive_movie_file(message: Message, state: FSMContext) -> None:
 # --- Title ---
 @router.message(MovieUploadStates.waiting_for_title)
 async def ask_original_title(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    edit_field = data.get("edit_field")
+
+    # If we're editing a specific field during the upload preview, handle it.
+    if edit_field:
+        await _apply_upload_edit(message, state, edit_field)
+        return
+
     await state.update_data(title=message.text.strip())
     await state.set_state(MovieUploadStates.waiting_for_original_title)
     await message.answer("🌍 Original nomini kiriting:")
+
+
+async def _apply_upload_edit(message: Message, state: FSMContext, field: str) -> None:
+    """Apply an edit to a single field during the upload flow, then return to preview."""
+    text = message.text.strip() if message.text else ""
+
+    if field == "code":
+        if text.lower() == "/skip":
+            async with async_session_factory() as session:
+                repo = MovieRepository(session)
+                code = await repo.next_code()
+            await state.update_data(code=code)
+        elif not CODE_PATTERN.match(text):
+            await message.answer("❌ Kod faqat raqamlardan iborat bo‘lishi kerak.")
+            return
+        else:
+            code = int(text)
+            async with async_session_factory() as session:
+                repo = MovieRepository(session)
+                if await repo.code_exists(code):
+                    await message.answer("❌ Bu kod allaqachon mavjud.")
+                    return
+            await state.update_data(code=code)
+    elif field == "year":
+        if not YEAR_PATTERN.match(text):
+            await message.answer("❌ Yil 4 xonali raqam bo‘lishi kerak.")
+            return
+        await state.update_data(year=int(text))
+    elif field == "duration":
+        match = DURATION_PATTERN.search(text)
+        if not match:
+            await message.answer("❌ Davomiylik raqam bo‘lishi kerak.")
+            return
+        await state.update_data(duration=int(match.group()))
+    elif field == "imdb_rating":
+        if not IMDB_PATTERN.match(text):
+            await message.answer("❌ IMDb reytingi raqam bo‘lishi kerak.")
+            return
+        await state.update_data(imdb_rating=float(text))
+    elif field == "poster":
+        if message.photo:
+            await state.update_data(poster_file_id=message.photo[-1].file_id)
+        elif text.lower() == "/skip":
+            await state.update_data(poster_file_id=None)
+        else:
+            await message.answer("🖼 Iltimos, rasm yuboring yoki /skip bosing.")
+            return
+    elif field == "trailer_url":
+        if text.lower() == "/skip":
+            await state.update_data(trailer_url=None)
+        elif text.startswith("http"):
+            await state.update_data(trailer_url=text)
+        else:
+            await message.answer("🎞 Havola http(s) bilan boshlanishi kerak yoki /skip bosing.")
+            return
+    elif field == "genres":
+        # Genre editing is handled via callbacks; this branch is a fallback.
+        await message.answer("🎭 Janrlarni tanlash uchun quyidagi tugmalardan foydalaning.")
+        return
+    else:
+        await state.update_data(**{field: text})
+
+    # Clear the edit flag and return to the preview.
+    await state.update_data(edit_field=None)
+    await state.set_state(MovieUploadStates.confirmation)
+    data = await state.get_data()
+    await _render_preview(message, data)
 
 
 # --- Original title ---
@@ -163,18 +243,24 @@ async def ask_genres(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(year=int(text))
     await state.set_state(MovieUploadStates.waiting_for_genres)
-    await _show_genre_selection(message)
+    await _show_genre_selection(message, state)
 
 
-async def _show_genre_selection(message: Message) -> None:
+async def _show_genre_selection(message: Message, state: FSMContext | None = None) -> None:
+    selected: set[int] = set()
+    if state is not None:
+        data = await state.get_data()
+        selected = set(data.get("selected_genres", []))
+
     async with async_session_factory() as session:
         await _ensure_default_genres(session)
         repo = GenreRepository(session)
         genres = await repo.list_all()
     rows = []
     for genre in genres:
+        mark = "☑" if genre.id in selected else "☐"
         rows.append(
-            [InlineKeyboardButton(text=f"☐ {genre.name}", callback_data=f"upload_genre:{genre.id}")]
+            [InlineKeyboardButton(text=f"{mark} {genre.name}", callback_data=f"upload_genre:{genre.id}")]
         )
     rows.append([InlineKeyboardButton(text="✅ Tayyor", callback_data="upload_genres_done")])
     await message.answer(
@@ -182,7 +268,7 @@ async def _show_genre_selection(message: Message) -> None:
     )
 
 
-@router.callback_query(F.data.startswith("upload_genre:"))
+@router.callback_query(MovieUploadStates.waiting_for_genres, F.data.startswith("upload_genre:"))
 async def toggle_upload_genre(callback: CallbackQuery, state: FSMContext) -> None:
     genre_id = int(callback.data.split(":")[1])
     data = await state.get_data()
@@ -203,19 +289,30 @@ async def toggle_upload_genre(callback: CallbackQuery, state: FSMContext) -> Non
             [InlineKeyboardButton(text=f"{mark} {genre.name}", callback_data=f"upload_genre:{genre.id}")]
         )
     rows.append([InlineKeyboardButton(text="✅ Tayyor", callback_data="upload_genres_done")])
-    await callback.message.edit_reply_markup(
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+    # Use edit_text (not edit_reply_markup) so the buttons reliably refresh.
+    await callback.message.edit_text(
+        "🎭 Janrlarni tanlang:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
     )
     await callback.answer()
 
 
-@router.callback_query(F.data == "upload_genres_done")
+@router.callback_query(MovieUploadStates.waiting_for_genres, F.data == "upload_genres_done")
 async def genres_done(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     selected = data.get("selected_genres", [])
     if not selected:
         await callback.answer("❌ Kamida bitta janr tanlang.", show_alert=True)
         return
+
+    # If we were editing genres during the preview, return to the preview.
+    if data.get("edit_field") == "genres":
+        await state.update_data(edit_field=None)
+        await state.set_state(MovieUploadStates.confirmation)
+        await _render_preview(callback.message, data)
+        await callback.answer()
+        return
+
     await state.set_state(MovieUploadStates.waiting_for_country)
     await callback.message.edit_text("🌍 Davlatni kiriting:\n\nMasalan: AQSh")
     await callback.answer()
@@ -420,8 +517,63 @@ async def save_movie(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "upload_edit")
 async def upload_edit(callback: CallbackQuery, state: FSMContext) -> None:
+    """Show a menu of fields the admin can edit before saving."""
+    await state.set_state(MovieUploadStates.confirmation)
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🎬 Nomi", callback_data="upload_edit_field:title")],
+            [InlineKeyboardButton(text="🌍 Original nomi", callback_data="upload_edit_field:original_title")],
+            [InlineKeyboardButton(text="🔢 Kod", callback_data="upload_edit_field:code")],
+            [InlineKeyboardButton(text="📝 Tavsif", callback_data="upload_edit_field:description")],
+            [InlineKeyboardButton(text="📅 Yil", callback_data="upload_edit_field:year")],
+            [InlineKeyboardButton(text="🎭 Janrlar", callback_data="upload_edit_field:genres")],
+            [InlineKeyboardButton(text="🌍 Davlat", callback_data="upload_edit_field:country")],
+            [InlineKeyboardButton(text="⏱ Davomiylik", callback_data="upload_edit_field:duration")],
+            [InlineKeyboardButton(text="⭐ IMDb", callback_data="upload_edit_field:imdb_rating")],
+            [InlineKeyboardButton(text="🔞 Yosh chegarasi", callback_data="upload_edit_field:age_rating")],
+            [InlineKeyboardButton(text="🖼 Poster", callback_data="upload_edit_field:poster")],
+            [InlineKeyboardButton(text="🎞 Treyler", callback_data="upload_edit_field:trailer_url")],
+            [InlineKeyboardButton(text="⬅️ Orqaga", callback_data="upload_back_to_preview")],
+        ]
+    )
+    await callback.message.edit_text("✏️ Qaysi maydonni tahrirlash kerak?", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "upload_back_to_preview")
+async def upload_back_to_preview(callback: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    await _render_preview(callback.message, data)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("upload_edit_field:"))
+async def upload_edit_field(callback: CallbackQuery, state: FSMContext) -> None:
+    field = callback.data.split(":")[1]
+    await state.update_data(edit_field=field)
+
+    if field == "genres":
+        # Show genre selection directly.
+        await state.set_state(MovieUploadStates.waiting_for_genres)
+        await _show_genre_selection(callback.message, state)
+        await callback.answer()
+        return
+
+    prompts = {
+        "title": "🎬 Yangi nomni kiriting:",
+        "original_title": "🌍 Yangi original nomni kiriting:",
+        "code": "🔢 Yangi kodni kiriting:",
+        "description": "📝 Yangi tavsifni kiriting:",
+        "year": "📅 Yangi yilni kiriting:",
+        "country": "🌍 Yangi davlatni kiriting:",
+        "duration": "⏱ Yangi davomiylikni kiriting:",
+        "imdb_rating": "⭐ Yangi IMDb reytingini kiriting:",
+        "age_rating": "🔞 Yangi yosh chegarasini kiriting:",
+        "poster": "🖼 Yangi poster yuboring yoki /skip:",
+        "trailer_url": "🎞 Yangi treyler havolasini kiriting yoki /skip:",
+    }
     await state.set_state(MovieUploadStates.waiting_for_title)
-    await callback.message.edit_text("🎬 Kino nomini kiriting:")
+    await callback.message.edit_text(prompts.get(field, "Qiymatni kiriting:"))
     await callback.answer()
 
 

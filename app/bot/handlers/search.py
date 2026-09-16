@@ -11,9 +11,9 @@ from app.services.search_service import SearchService
 router = Router(name="search")
 
 
-async def start_search(message: Message) -> None:
+async def start_search(message: Message, state: FSMContext) -> None:
     await message.answer("🔎 Kino nomini yozing:")
-    await message.state.set_state(SearchStates.waiting_for_query)
+    await state.set_state(SearchStates.waiting_for_query)
 
 
 @router.message(SearchStates.waiting_for_query)

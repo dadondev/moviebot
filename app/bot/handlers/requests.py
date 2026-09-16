@@ -16,9 +16,9 @@ logger = logging.getLogger(__name__)
 router = Router(name="requests")
 
 
-async def start_request(message: Message) -> None:
+async def start_request(message: Message, state: FSMContext) -> None:
     await message.answer("🎬 Qaysi kinoni izlayapsiz?\n\nKino nomini yuboring:")
-    await message.state.set_state(RequestStates.waiting_for_title)
+    await state.set_state(RequestStates.waiting_for_title)
 
 
 @router.message(RequestStates.waiting_for_title)

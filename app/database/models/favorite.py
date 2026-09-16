@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from sqlalchemy import (
+    BigInteger,
     DateTime,
     ForeignKey,
     Integer,
@@ -19,8 +20,9 @@ class Favorite(Base):
     __table_args__ = (UniqueConstraint("user_id", "movie_id", name="uq_favorite"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # user_id stores the Telegram user ID (BigInteger) to match handler usage.
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), index=True
+        BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), index=True
     )
     movie_id: Mapped[int] = mapped_column(
         ForeignKey("movies.id", ondelete="CASCADE"), index=True
@@ -38,8 +40,9 @@ class Rating(Base):
     __table_args__ = (UniqueConstraint("user_id", "movie_id", name="uq_rating"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # user_id stores the Telegram user ID (BigInteger) to match handler usage.
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), index=True
+        BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), index=True
     )
     movie_id: Mapped[int] = mapped_column(
         ForeignKey("movies.id", ondelete="CASCADE"), index=True

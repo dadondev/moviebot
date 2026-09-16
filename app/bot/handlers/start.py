@@ -2,6 +2,7 @@
 
 from aiogram import F, Router
 from aiogram.filters import CommandStart
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from app.bot.keyboards.common import MAIN_MENU
@@ -28,10 +29,10 @@ async def back_to_main(callback: CallbackQuery) -> None:
 
 
 @router.message(F.text == "🔎 Kino izlash")
-async def search_button(message: Message) -> None:
+async def search_button(message: Message, state: FSMContext) -> None:
     from app.bot.handlers.search import start_search
 
-    await start_search(message)
+    await start_search(message, state)
 
 
 @router.message(F.text == "🔢 Kod orqali izlash")
@@ -68,10 +69,10 @@ async def favorites_button(message: Message) -> None:
 
 
 @router.message(F.text == "📩 Kino so‘rash")
-async def request_button(message: Message) -> None:
+async def request_button(message: Message, state: FSMContext) -> None:
     from app.bot.handlers.requests import start_request
 
-    await start_request(message)
+    await start_request(message, state)
 
 
 @router.message(F.text == "/admin")

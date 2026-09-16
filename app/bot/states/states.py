@@ -4,6 +4,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 
 class MovieUploadStates(StatesGroup):
+    waiting_for_file = State()
     waiting_for_title = State()
     waiting_for_original_title = State()
     waiting_for_code = State()
