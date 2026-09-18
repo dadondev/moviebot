@@ -396,7 +396,7 @@ async def show_preview(message: Message, state: FSMContext) -> None:
     await message.answer("Bu nima?", reply_markup=kb)
 
 
-@router.callback_query(F.data.startswith("upload_type:"))
+@router.callback_query(MovieUploadStates.waiting_for_series, F.data.startswith("upload_type:"))
 async def upload_type_selected(callback: CallbackQuery, state: FSMContext) -> None:
     movie_type = callback.data.split(":")[1]
     is_series = movie_type == "series"
@@ -442,7 +442,7 @@ async def _render_preview(message: Message, data: dict) -> None:
 
 
 # --- Save ---
-@router.callback_query(F.data == "upload_save")
+@router.callback_query(MovieUploadStates.confirmation, F.data == "upload_save")
 async def save_movie(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     code = data.get("code")
@@ -515,7 +515,7 @@ async def save_movie(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
 
 
-@router.callback_query(F.data == "upload_edit")
+@router.callback_query(MovieUploadStates.confirmation, F.data == "upload_edit")
 async def upload_edit(callback: CallbackQuery, state: FSMContext) -> None:
     """Show a menu of fields the admin can edit before saving."""
     await state.set_state(MovieUploadStates.confirmation)
@@ -540,14 +540,14 @@ async def upload_edit(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
 
 
-@router.callback_query(F.data == "upload_back_to_preview")
+@router.callback_query(MovieUploadStates.confirmation, F.data == "upload_back_to_preview")
 async def upload_back_to_preview(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     await _render_preview(callback.message, data)
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("upload_edit_field:"))
+@router.callback_query(MovieUploadStates.confirmation, F.data.startswith("upload_edit_field:"))
 async def upload_edit_field(callback: CallbackQuery, state: FSMContext) -> None:
     field = callback.data.split(":")[1]
     await state.update_data(edit_field=field)
@@ -577,7 +577,7 @@ async def upload_edit_field(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
 
 
-@router.callback_query(F.data == "upload_cancel")
+@router.callback_query(MovieUploadStates.confirmation, F.data == "upload_cancel")
 async def upload_cancel(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     await callback.message.edit_text("❌ Amal bekor qilindi.")
