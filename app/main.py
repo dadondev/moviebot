@@ -91,13 +91,9 @@ async def main() -> None:
     dp = create_dispatcher()
 
     try:
-        if settings.use_webhook:
-            from app.webhook import run_webhook
+        from app.webhook import run_webhook
 
-            await run_webhook(bot, dp)
-        else:
-            await bot.delete_webhook(drop_pending_updates=True)
-            await dp.start_polling(bot)
+        await run_webhook(bot, dp)
     finally:
         await close_redis()
         await bot.session.close()
