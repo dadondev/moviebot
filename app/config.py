@@ -38,8 +38,20 @@ class Settings(BaseSettings):
     webhook_url: str = ""  # e.g. https://your-app.up.railway.app/webhook/bot
     webhook_path: str = "/webhook/bot"
     webhook_host: str = "0.0.0.0"
+    # Railway injects a PORT env var; default to it so the proxy can reach us.
     webhook_port: int = 8000
     webhook_secret: str = ""  # optional secret token for webhook
+    # Railway/Heroku-style port override (takes precedence over webhook_port).
+    port: int | None = None
+
+    @property
+    def effective_webhook_port(self) -> int:
+        """Return the port the webhook server should bind to.
+
+        Prefers the platform-injected PORT (Railway/Heroku), falling back to
+        webhook_port.
+        """
+        return self.port or self.webhook_port
 
     # Behavioural knobs
     subscription_cache_ttl: int = 300  # seconds

@@ -66,12 +66,12 @@ async def run_webhook(bot: Bot, dispatcher: Dispatcher) -> None:
     app = create_app(bot, dispatcher)
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, settings.webhook_host, settings.webhook_port)
+    site = web.TCPSite(runner, settings.webhook_host, settings.effective_webhook_port)
     await site.start()
     logger.info(
         "Webhook server listening on %s:%s%s",
         settings.webhook_host,
-        settings.webhook_port,
+        settings.effective_webhook_port,
         settings.webhook_path,
     )
 
